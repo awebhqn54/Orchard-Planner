@@ -32,10 +32,43 @@
 
 .topbar-actions {
   display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+  width: 100%;
+  max-width: min(100%, 720px);
+}
+
+.topbar-actions-row {
+  display: flex;
   flex-wrap: wrap;
   gap: 10px;
   justify-content: flex-end;
   align-items: center;
+  width: 100%;
+}
+
+.topbar-actions-primary {
+  justify-content: flex-end;
+}
+
+/* Advanced toggle alone so opening the panel does not reflow the primary row */
+.topbar-actions-advanced-line {
+  justify-content: flex-end;
+}
+
+.topbar-actions-advanced {
+  justify-content: flex-end;
+}
+
+.topbar-advanced-hint {
+  flex: 1 1 100%;
+  max-width: 100%;
+  text-align: right;
+}
+
+.topbar-actions-advanced[hidden] {
+  display: none !important;
 }
 
 .button {
@@ -129,10 +162,24 @@
   background: rgba(120, 113, 108, 0.22);
 }
 
+/* Horizontal scroll on narrow viewports keeps five orchard columns usable */
+.orchard-map-scroll {
+  overflow-x: auto;
+  overflow-y: visible;
+  -webkit-overflow-scrolling: touch;
+  margin-inline: -4px;
+  padding-inline: 4px;
+  padding-bottom: 6px;
+}
+
 .orchard-map {
-  --spot-height: 168px;
+  /* ~85% of prior 168px default — tighter rows with padding inside the cell */
+  --spot-height: calc(168px * 0.85);
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  /* Never collapse below five columns; parent scrolls horizontally when needed */
+  grid-template-columns: repeat(5, minmax(100px, 1fr));
+  /* Wider than typical phone width so parent .orchard-map-scroll can scroll horizontally */
+  min-width: 560px;
   gap: 12px;
 }
 
@@ -159,11 +206,11 @@
 }
 
 .spot {
-  min-height: var(--spot-height, 168px);
-  height: var(--spot-height, 168px);
+  min-height: var(--spot-height, 143px);
+  height: var(--spot-height, 143px);
   border-radius: 14px;
   border: 0;
-  padding: 0;
+  padding: 8px 10px;
   display: grid;
   align-content: start;
   gap: 6px;
@@ -560,16 +607,118 @@
   max-width: 160px;
 }
 
+.detail-drawer-toggle {
+  display: none;
+}
+
+.detail-drawer-close {
+  display: none;
+}
+
+.detail-drawer-backdrop {
+  display: none;
+}
+
 @media (max-width: 1200px) {
   .layout-grid {
     grid-template-columns: 1fr;
   }
 
-  .orchard-map {
-    grid-template-columns: 1fr;
-  }
-
   .topbar {
     flex-direction: column;
+  }
+
+  .topbar-actions {
+    align-items: stretch;
+    max-width: none;
+  }
+
+  .topbar-actions-primary,
+  .topbar-actions-advanced-line,
+  .topbar-actions-advanced {
+    justify-content: flex-start;
+  }
+
+  .topbar-advanced-hint {
+    text-align: left;
+  }
+
+  .detail-drawer-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Slide-out variety details; fixed removes aside from grid flow on small screens */
+  .detail-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(90vw, 380px);
+    max-width: 100%;
+    z-index: 210;
+    margin: 0;
+    border-radius: 18px 0 0 18px;
+    overflow-y: auto;
+    box-shadow: -6px 0 28px rgba(15, 23, 42, 0.18);
+    transform: translateX(100%);
+    transition: transform 0.22s ease;
+    align-self: stretch;
+  }
+
+  .detail-panel:not(.detail-panel--open) {
+    pointer-events: none;
+  }
+
+  .detail-panel.detail-panel--open {
+    transform: translateX(0);
+    pointer-events: auto;
+  }
+
+  .detail-panel .panel-header {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--panel);
+    padding-bottom: 12px;
+    margin-bottom: 12px;
+    margin-inline: -18px;
+    padding-inline: 18px;
+    padding-top: 4px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .detail-drawer-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: #fff;
+    color: var(--text-h);
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  .detail-drawer-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    background: rgba(15, 23, 42, 0.45);
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body.detail-drawer-open {
+    overflow: hidden;
   }
 }

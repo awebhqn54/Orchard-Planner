@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import './App.css'
 import { VarietyDetailPanel } from './components/VarietyDetailPanel'
 import { defaultStarterLayout } from './data/defaultStarterLayout'
@@ -46,6 +46,24 @@ function getInitialSelectedTreeId(data: NormalizedOrchardData): string | null {
 
 const initialData = buildOrchardDataWithOptionalDefaultLayout(bundle)
 
+const NARROW_MEDIA = '(max-width: 1200px)'
+
+function useNarrowViewport(): boolean {
+  const [narrow, setNarrow] = useState(() =>
+    typeof window !== 'undefined' ? window.matchMedia(NARROW_MEDIA).matches : false,
+  )
+
+  useEffect(() => {
+    const mql = window.matchMedia(NARROW_MEDIA)
+    const sync = () => setNarrow(mql.matches)
+    sync()
+    mql.addEventListener('change', sync)
+    return () => mql.removeEventListener('change', sync)
+  }, [])
+
+  return narrow
+}
+
 function App() {
   const [data, setData] = useState<NormalizedOrchardData | null>(initialData)
   const [selectedTreeId, setSelectedTreeId] = useState<string | null>(getInitialSelectedTreeId(initialData))
@@ -53,10 +71,44 @@ function App() {
   const [layoutImportMessage, setLayoutImportMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(
     null,
   )
+  const [detailDrawerOpen, setDetailDrawerOpen] = useState(false)
+  const [advancedActionsOpen, setAdvancedActionsOpen] = useState(false)
+  const isNarrowViewport = useNarrowViewport()
 
   function selectTreeForPlanner(treeId: string | null) {
     setSelectedTreeId(treeId)
+    if (treeId && typeof window !== 'undefined' && window.matchMedia(NARROW_MEDIA).matches) {
+      setDetailDrawerOpen(true)
+    }
   }
+
+  useEffect(() => {
+    if (!isNarrowViewport) {
+      setDetailDrawerOpen(false)
+    }
+  }, [isNarrowViewport])
+
+  useEffect(() => {
+    if (!isNarrowViewport || !detailDrawerOpen) {
+      return
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setDetailDrawerOpen(false)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [isNarrowViewport, detailDrawerOpen])
+
+  useEffect(() => {
+    if (!isNarrowViewport || !detailDrawerOpen) {
+      document.body.classList.remove('detail-drawer-open')
+      return
+    }
+    document.body.classList.add('detail-drawer-open')
+    return () => document.body.classList.remove('detail-drawer-open')
+  }, [isNarrowViewport, detailDrawerOpen])
 
   function updateTreePlacement(tree: Tree, targetSpot: PlantingSpot | null) {
     tree.currentSpotId = targetSpot?.id ?? null
@@ -211,43 +263,71 @@ function App() {
           </p>
         </div>
         <div className="topbar-actions">
-          <button className="button button-primary" onClick={handleResetToDefault} type="button">
-            Reset to default
-          </button>
-          <button className="button" onClick={handleSaveLayoutJson} type="button">
-            Save layout as JSON
-          </button>
-          <label className="button">
-            Import layout JSON
-            <input
-              type="file"
-              hidden
-              accept=".json,application/json"
-              onChange={(event) => {
-                const file = event.target.files?.[0]
-                if (file) {
-                  void handleImportLayoutFile(file)
-                }
-                event.target.value = ''
-              }}
-            />
-          </label>
-          {layoutImportMessage ? (
-            <p
-              className={`layout-import-hint ${layoutImportMessage.type === 'error' ? 'layout-import-hint--error' : 'layout-import-hint--success'}`}
+          <div className="topbar-actions-row topbar-actions-primary">
+            <button
+              className="button detail-drawer-toggle"
+              type="button"
+              onClick={() => setDetailDrawerOpen((open) => !open)}
+              aria-expanded={detailDrawerOpen}
+              aria-controls="variety-details-panel"
             >
-              {layoutImportMessage.text}
-            </p>
-          ) : null}
-          <button className="button" onClick={() => data && exportSpotAssignments(data)} type="button">
-            Export CSV
-          </button>
-          <button className="button" onClick={() => data && exportStakeList(data)} type="button">
-            Export stake list
-          </button>
-          <button className="button" onClick={() => window.print()} type="button">
-            Print
-          </button>
+              {detailDrawerOpen ? 'Hide variety details' : 'Variety details'}
+            </button>
+            <button className="button button-primary" onClick={handleResetToDefault} type="button">
+              Reset to default
+            </button>
+            <button className="button" onClick={() => data && exportSpotAssignments(data)} type="button">
+              Export CSV
+            </button>
+            <button className="button" onClick={() => window.print()} type="button">
+              Print
+            </button>
+          </div>
+          <div className="topbar-actions-row topbar-actions-advanced-line">
+            <button
+              className="button"
+              type="button"
+              onClick={() => setAdvancedActionsOpen((open) => !open)}
+              aria-expanded={advancedActionsOpen}
+              aria-controls="topbar-advanced-actions"
+            >
+              {advancedActionsOpen ? 'Hide advanced' : 'Advanced'}
+            </button>
+          </div>
+          <div
+            className="topbar-actions-row topbar-actions-advanced"
+            hidden={!advancedActionsOpen}
+            id="topbar-advanced-actions"
+          >
+            <button className="button" onClick={handleSaveLayoutJson} type="button">
+              Save layout as JSON
+            </button>
+            <label className="button">
+              Import layout JSON
+              <input
+                type="file"
+                hidden
+                accept=".json,application/json"
+                onChange={(event) => {
+                  const file = event.target.files?.[0]
+                  if (file) {
+                    void handleImportLayoutFile(file)
+                  }
+                  event.target.value = ''
+                }}
+              />
+            </label>
+            <button className="button" onClick={() => data && exportStakeList(data)} type="button">
+              Export stake list
+            </button>
+            {layoutImportMessage ? (
+              <p
+                className={`layout-import-hint topbar-advanced-hint ${layoutImportMessage.type === 'error' ? 'layout-import-hint--error' : 'layout-import-hint--success'}`}
+              >
+                {layoutImportMessage.text}
+              </p>
+            ) : null}
+          </div>
         </div>
       </header>
 
@@ -261,59 +341,61 @@ function App() {
               </div>
             </div>
 
-            <div className="orchard-map">
-              {data?.orchardRows.map((row) => (
-                <div className="orchard-row-column" key={row.id}>
-                  <div className="row-label row-label-top">
-                    <strong>{row.label}</strong>
-                    <span>{row.offsetFeetFromFence} ft from fence</span>
-                  </div>
-                  <div className="row-spots-vertical">
-                    {row.spotIds.map((spotId) => {
-                      const spot = data.plantingSpots.find((item) => item.id === spotId)!
-                      const tree = spot.currentTreeId ? treeById.get(spot.currentTreeId) : undefined
-                      const isSelected = tree?.id === selectedTreeId
+            <div className="orchard-map-scroll">
+              <div className="orchard-map">
+                {data?.orchardRows.map((row) => (
+                  <div className="orchard-row-column" key={row.id}>
+                    <div className="row-label row-label-top">
+                      <strong>{row.label}</strong>
+                      <span>{row.offsetFeetFromFence} ft from fence</span>
+                    </div>
+                    <div className="row-spots-vertical">
+                      {row.spotIds.map((spotId) => {
+                        const spot = data.plantingSpots.find((item) => item.id === spotId)!
+                        const tree = spot.currentTreeId ? treeById.get(spot.currentTreeId) : undefined
+                        const isSelected = tree?.id === selectedTreeId
 
-                      return (
-                        <div
-                          key={spot.id}
-                          className={`spot ${spot.kind} spot-zone-${spot.zoneId.replace(/[^a-z0-9-]+/gi, '-')} ${isSelected ? 'spot-selected' : ''}`}
-                          onDragOver={(event) => event.preventDefault()}
-                          onDrop={() => handleDropToSpot(spot.id)}
-                        >
-                          {tree ? (
-                            <div className="tree-chip-wrap">
-                              <button
-                                className={`tree-chip orchard-cat-${getOrchardDisplayCategory(tree)} species-${tree.species.toLowerCase().replace(/[^a-z0-9]+/g, '-')} ${tree.manualOverride.isManualOverride ? 'manual' : ''}`}
-                                draggable
-                                onClick={() => selectTreeForPlanner(tree.id)}
-                                onDragStart={() => setDraggedTreeId(tree.id)}
-                                onDragEnd={() => setDraggedTreeId(null)}
-                                type="button"
-                              >
-                                <span>{tree.varietyName}</span>
-                                <small>{getTreeSpeciesLabel(tree)}</small>
-                                <small className="tree-chip-size">{formatMatureSizeWithHeight(tree)}</small>
-                                <small>{tree.currentSpotId}</small>
-                              </button>
-                              <button
-                                className="chip-mini-action"
-                                onClick={(event) => {
-                                  event.stopPropagation()
-                                  moveTree(tree.id, null)
-                                }}
-                                type="button"
-                              >
-                                Send to staging
-                              </button>
-                            </div>
-                          ) : null}
-                        </div>
-                      )
-                    })}
+                        return (
+                          <div
+                            key={spot.id}
+                            className={`spot ${spot.kind} spot-zone-${spot.zoneId.replace(/[^a-z0-9-]+/gi, '-')} ${isSelected ? 'spot-selected' : ''}`}
+                            onDragOver={(event) => event.preventDefault()}
+                            onDrop={() => handleDropToSpot(spot.id)}
+                          >
+                            {tree ? (
+                              <div className="tree-chip-wrap">
+                                <button
+                                  className={`tree-chip orchard-cat-${getOrchardDisplayCategory(tree)} species-${tree.species.toLowerCase().replace(/[^a-z0-9]+/g, '-')} ${tree.manualOverride.isManualOverride ? 'manual' : ''}`}
+                                  draggable
+                                  onClick={() => selectTreeForPlanner(tree.id)}
+                                  onDragStart={() => setDraggedTreeId(tree.id)}
+                                  onDragEnd={() => setDraggedTreeId(null)}
+                                  type="button"
+                                >
+                                  <span>{tree.varietyName}</span>
+                                  <small>{getTreeSpeciesLabel(tree)}</small>
+                                  <small className="tree-chip-size">{formatMatureSizeWithHeight(tree)}</small>
+                                  <small>{tree.currentSpotId}</small>
+                                </button>
+                                <button
+                                  className="chip-mini-action"
+                                  onClick={(event) => {
+                                    event.stopPropagation()
+                                    moveTree(tree.id, null)
+                                  }}
+                                  type="button"
+                                >
+                                  Send to staging
+                                </button>
+                              </div>
+                            ) : null}
+                          </div>
+                        )
+                      })}
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </article>
 
@@ -352,9 +434,30 @@ function App() {
           </article>
         </section>
 
-        <aside className="detail-panel card">
+        {isNarrowViewport && detailDrawerOpen ? (
+          <button
+            type="button"
+            className="detail-drawer-backdrop"
+            aria-label="Close variety details"
+            onClick={() => setDetailDrawerOpen(false)}
+          />
+        ) : null}
+
+        <aside
+          className={`detail-panel card ${detailDrawerOpen ? 'detail-panel--open' : ''}`}
+          id="variety-details-panel"
+          aria-hidden={isNarrowViewport ? !detailDrawerOpen : false}
+        >
           <div className="panel-header">
             <h2>Variety details</h2>
+            <button
+              type="button"
+              className="detail-drawer-close"
+              onClick={() => setDetailDrawerOpen(false)}
+              aria-label="Close variety details"
+            >
+              ×
+            </button>
           </div>
           <VarietyDetailPanel record={detailRecord} tree={detailTree} />
         </aside>
