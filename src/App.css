@@ -173,8 +173,8 @@
 }
 
 .orchard-map {
-  /* ~85% of prior 168px default — tighter rows with padding inside the cell */
-  --spot-height: calc(168px * 0.85);
+  /* 110% of original 168px reference height */
+  --spot-height: calc(168px * 1.1);
   display: grid;
   /* Never collapse below five columns; parent scrolls horizontally when needed */
   grid-template-columns: repeat(5, minmax(100px, 1fr));
@@ -206,11 +206,11 @@
 }
 
 .spot {
-  min-height: var(--spot-height, 143px);
-  height: var(--spot-height, 143px);
+  min-height: var(--spot-height, 185px);
+  height: var(--spot-height, 185px);
   border-radius: 14px;
   border: 0;
-  padding: 8px 10px;
+  padding: 0;
   display: grid;
   align-content: start;
   gap: 6px;
