@@ -176,17 +176,29 @@
   /* Row columns and gap strips (1 fence strip + n−1 between = n strips for n rows) */
   --orchard-map-columns: 5;
   --orchard-map-strip-count: 5;
-  /* 110% of original 168px reference height */
-  --spot-height: calc(168px * 1.1);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: calc(
+    var(--orchard-map-strip-count, 5) * 52px + var(--orchard-map-columns, 5) * 100px +
+      (var(--orchard-map-columns, 5) * 2 - 1) * 6px
+  );
+}
+
+.orchard-map-band {
   display: flex;
   flex-direction: row;
   flex-wrap: nowrap;
   align-items: stretch;
   gap: 6px;
-  min-width: calc(
-    var(--orchard-map-strip-count, 5) * 52px + var(--orchard-map-columns, 5) * 100px +
-      (var(--orchard-map-columns, 5) * 2 - 1) * 6px
-  );
+}
+
+.orchard-row-header {
+  flex: 1 1 100px;
+  min-width: 100px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
 }
 
 .orchard-map-gap-strip {
@@ -209,6 +221,35 @@
   background: rgba(74, 124, 89, 0.08);
 }
 
+/* Horizontal strips: space for tractor / equipment between fence and rows or between row lines */
+.orchard-map-gap-strip--drive-lane {
+  background: repeating-linear-gradient(
+    -32deg,
+    rgba(75, 85, 99, 0.06) 0 5px,
+    rgba(107, 114, 128, 0.1) 5px 10px
+  );
+  border-inline: 1px dashed rgba(75, 85, 99, 0.38);
+}
+
+.orchard-map-gap-strip--drive-lane.orchard-map-gap-strip--fence {
+  border-inline-start: 1px dashed rgba(75, 85, 99, 0.42);
+}
+
+.orchard-map-gap-strip__label--drive-lane {
+  color: #4b5563;
+}
+
+/* After base strip + fence so specificity wins: width only, no chrome or stretch */
+.orchard-map-gap-strip.orchard-map-gap-strip--band-header {
+  align-self: flex-start;
+  border: none;
+  background: transparent;
+  border-radius: 0;
+  padding: 0;
+  min-height: 0;
+  box-shadow: none;
+}
+
 .orchard-map-gap-strip__label {
   font-size: 11px;
   font-weight: 600;
@@ -222,9 +263,7 @@
 .orchard-row-column {
   flex: 1 1 100px;
   min-width: 100px;
-  display: grid;
-  gap: 10px;
-  align-items: start;
+  display: block;
 }
 
 .row-label {
@@ -237,6 +276,51 @@
   padding-top: 0;
 }
 
+.row-along-total {
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+.orchard-arrow-glyph {
+  display: inline-block;
+  font-size: 1.5em;
+  line-height: 1;
+  vertical-align: -0.1em;
+}
+
+.row-inter-tree-spacing {
+  flex-shrink: 0;
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 2px 0;
+  padding: 4px 6px;
+  border-radius: 8px;
+  border: 1px dashed rgba(17, 24, 39, 0.12);
+  background: rgba(17, 24, 39, 0.03);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.row-inter-tree-spacing--unknown {
+  border-color: rgba(180, 83, 9, 0.45);
+  background: rgba(254, 243, 199, 0.35);
+  color: #92400e;
+}
+
+.spot--spacing-unknown {
+  outline: 1px dashed rgba(180, 83, 9, 0.55);
+  outline-offset: 1px;
+}
+
+.tree-chip--spacing-unknown {
+  outline: 2px dashed rgba(180, 83, 9, 0.65);
+  outline-offset: 0;
+}
+
 .row-spots-vertical {
   display: grid;
   grid-template-columns: 1fr;
@@ -244,8 +328,9 @@
 }
 
 .spot {
-  min-height: var(--spot-height, 185px);
-  height: var(--spot-height, 185px);
+  /* Content-sized cells; min height keeps empty slots usable as drop targets */
+  min-height: 52px;
+  height: auto;
   border-radius: 14px;
   border: 0;
   padding: 0;
@@ -253,7 +338,7 @@
   align-content: start;
   gap: 6px;
   background: #fff;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .spot.placeholder {
@@ -311,6 +396,29 @@
   line-height: 1.3;
 }
 
+.tree-chip-row-start {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.tree-chip small.tree-chip-spot-pill {
+  display: inline-block;
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 1px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: #374151;
+  background: rgba(17, 24, 39, 0.06);
+  border: 1px solid rgba(17, 24, 39, 0.12);
+  line-height: 1.25;
+}
+
 .tree-chip {
   width: 100%;
   border: 1px solid rgba(0, 0, 0, 0.08);
@@ -323,13 +431,15 @@
   cursor: grab;
   font: inherit;
   color: var(--text-h);
-  height: 100%;
+  height: auto;
+  min-height: 0;
   overflow: hidden;
 }
 
 .tree-chip-wrap {
   position: relative;
-  height: 100%;
+  height: auto;
+  min-height: 0;
 }
 
 .tree-chip.manual {

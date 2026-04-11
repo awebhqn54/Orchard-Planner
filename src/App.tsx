@@ -7,11 +7,20 @@ import type { ImportedInventoryBundle } from './utils/importData'
 import { buildNormalizedOrchardData } from './utils/placementEngine'
 import { exportSpotAssignments, exportStakeList } from './utils/export'
 import { applyLayoutSnapshot, captureLayoutSnapshot, downloadLayoutFile, parseLayoutJson } from './utils/layoutSnapshot'
+import {
+  computeFeetFromRowStartBySpotId,
+  computeRowSpacingMetrics,
+  crownDiameterFtForSpacing,
+  type SpotFeetFromRowStart,
+} from './utils/inRowTreeSpacing'
 import { formatMatureSizeWithHeight } from './utils/matureSizeDisplay'
 import { getOrchardDisplayCategory } from './utils/orchardDisplayCategory'
 import type { NormalizedOrchardData, PlantingSpot, Tree } from './types'
 
 const bundle: ImportedInventoryBundle = bundledProjectImportBundle
+
+/** In-row / fence strips with this width (ft) are shown as tractor / equipment lanes. */
+const TRACTOR_DRIVE_LANE_SPACING_FT = 24
 
 function getTreeSpeciesLabel(tree: Tree): string {
   if (tree.species === 'Apple' && tree.orchardSection.toLowerCase().includes('cider')) {
@@ -252,6 +261,36 @@ function App() {
 
   const treeById = useMemo(() => new Map(data?.trees.map((tree) => [tree.id, tree]) ?? []), [data])
 
+  const spotById = useMemo(
+    () => new Map(data?.plantingSpots.map((spot) => [spot.id, spot]) ?? []),
+    [data],
+  )
+
+  const rowSpacingByRowId = useMemo(() => {
+    const m = new Map<string, ReturnType<typeof computeRowSpacingMetrics>>()
+    if (!data) {
+      return m
+    }
+    for (const row of data.orchardRows) {
+      m.set(row.id, computeRowSpacingMetrics(row.spotIds, spotById, treeById))
+    }
+    return m
+  }, [data, spotById, treeById])
+
+  const feetFromRowStartBySpotId = useMemo(() => {
+    const m = new Map<string, SpotFeetFromRowStart>()
+    if (!data) {
+      return m
+    }
+    for (const row of data.orchardRows) {
+      const rowM = computeFeetFromRowStartBySpotId(row.spotIds, spotById, treeById)
+      rowM.forEach((value, spotId) => {
+        m.set(spotId, value)
+      })
+    }
+    return m
+  }, [data, spotById, treeById])
+
   return (
     <div className="app-shell">
       <header className="topbar card">
@@ -353,77 +392,167 @@ function App() {
               >
                 {data && data.orchardRows.length > 0 ? (
                   <>
-                    <div
-                      className="orchard-map-gap-strip orchard-map-gap-strip--fence"
-                      aria-hidden
-                      title="Fence to Row 1"
-                    >
-                      <span className="orchard-map-gap-strip__label">
-                        {data.orchardRows[0].offsetFeetFromFence}′ →
-                      </span>
+                    <div className="orchard-map-band orchard-map-band--header">
+                      <div className="orchard-map-gap-strip orchard-map-gap-strip--band-header" aria-hidden />
+                      {data.orchardRows.map((row, rowIdx) => {
+                        const rowSpacing = rowSpacingByRowId.get(row.id)
+                        return (
+                          <Fragment key={row.id}>
+                            <div className="orchard-row-header">
+                              <div className="row-label row-label-top">
+                                <strong>{row.label}</strong>
+                                <span>{row.offsetFeetFromFence} ft from fence</span>
+                                {rowSpacing ? (
+                                  <span className="row-along-total">
+                                    {rowSpacing.pairs.length === 0
+                                      ? '—'
+                                      : rowSpacing.hasUnknownPair && rowSpacing.totalKnownFt === 0
+                                        ? '— (add crown spread)'
+                                        : rowSpacing.hasUnknownPair
+                                          ? `${rowSpacing.totalKnownFt}′ to last tree (partial — add spread)`
+                                          : `${rowSpacing.totalKnownFt}′ to last tree`}
+                                  </span>
+                                ) : null}
+                              </div>
+                            </div>
+                            {rowIdx < data.orchardRows.length - 1 ? (
+                              <div className="orchard-map-gap-strip orchard-map-gap-strip--band-header" aria-hidden />
+                            ) : null}
+                          </Fragment>
+                        )
+                      })}
                     </div>
-                    {data.orchardRows.map((row, rowIdx) => (
-                      <Fragment key={row.id}>
-                        <div className="orchard-row-column">
-                          <div className="row-label row-label-top">
-                            <strong>{row.label}</strong>
-                            <span>{row.offsetFeetFromFence} ft from fence</span>
-                          </div>
-                          <div className="row-spots-vertical">
-                            {row.spotIds.map((spotId) => {
-                              const spot = data.plantingSpots.find((item) => item.id === spotId)!
-                              const tree = spot.currentTreeId ? treeById.get(spot.currentTreeId) : undefined
-                              const isSelected = tree?.id === selectedTreeId
-
-                              return (
-                                <div
-                                  key={spot.id}
-                                  className={`spot ${spot.kind} spot-zone-${spot.zoneId.replace(/[^a-z0-9-]+/gi, '-')} ${isSelected ? 'spot-selected' : ''}`}
-                                  onDragOver={(event) => event.preventDefault()}
-                                  onDrop={() => handleDropToSpot(spot.id)}
-                                >
-                                  {tree ? (
-                                    <div className="tree-chip-wrap">
-                                      <button
-                                        className={`tree-chip orchard-cat-${getOrchardDisplayCategory(tree)} species-${tree.species.toLowerCase().replace(/[^a-z0-9]+/g, '-')} ${tree.manualOverride.isManualOverride ? 'manual' : ''}`}
-                                        draggable
-                                        onClick={() => selectTreeForPlanner(tree.id)}
-                                        onDragStart={() => setDraggedTreeId(tree.id)}
-                                        onDragEnd={() => setDraggedTreeId(null)}
-                                        type="button"
-                                      >
-                                        <span>{tree.varietyName}</span>
-                                        <small>{getTreeSpeciesLabel(tree)}</small>
-                                        <small className="tree-chip-size">{formatMatureSizeWithHeight(tree)}</small>
-                                        <small>{tree.currentSpotId}</small>
-                                      </button>
-                                      <button
-                                        className="chip-mini-action"
-                                        onClick={(event) => {
-                                          event.stopPropagation()
-                                          moveTree(tree.id, null)
-                                        }}
-                                        type="button"
-                                      >
-                                        Send to staging
-                                      </button>
-                                    </div>
-                                  ) : null}
-                                </div>
-                              )
-                            })}
-                          </div>
-                        </div>
-                        {rowIdx < data.orchardRows.length - 1 ? (
-                          <div className="orchard-map-gap-strip" aria-hidden>
-                            <span className="orchard-map-gap-strip__label">
-                              ↔{' '}
-                              {data.orchardRows[rowIdx + 1].offsetFeetFromFence - row.offsetFeetFromFence}′
+                    <div className="orchard-map-band orchard-map-band--body">
+                      {(() => {
+                        const fenceToRow1Ft = data.orchardRows[0].offsetFeetFromFence
+                        const fenceIsTractorLane = fenceToRow1Ft === TRACTOR_DRIVE_LANE_SPACING_FT
+                        return (
+                          <div
+                            className={`orchard-map-gap-strip orchard-map-gap-strip--fence orchard-map-gap-strip--band-spacer${fenceIsTractorLane ? ' orchard-map-gap-strip--drive-lane' : ''}`}
+                            title={
+                              fenceIsTractorLane
+                                ? 'Fence to Row 1 — tractor / equipment lane'
+                                : 'Fence to Row 1'
+                            }
+                          >
+                            <span
+                              className={`orchard-map-gap-strip__label${fenceIsTractorLane ? ' orchard-map-gap-strip__label--drive-lane' : ''}`}
+                            >
+                              {fenceToRow1Ft}′{' '}
+                              <span className="orchard-arrow-glyph">→</span>
                             </span>
                           </div>
-                        ) : null}
-                      </Fragment>
-                    ))}
+                        )
+                      })()}
+                      {data.orchardRows.map((row, rowIdx) => {
+                        const rowSpacing = rowSpacingByRowId.get(row.id)
+                        const nextRow = rowIdx < data.orchardRows.length - 1 ? data.orchardRows[rowIdx + 1] : null
+                        const betweenRowGapFt = nextRow ? nextRow.offsetFeetFromFence - row.offsetFeetFromFence : null
+                        const stripIsTractorLane = betweenRowGapFt === TRACTOR_DRIVE_LANE_SPACING_FT
+                        return (
+                          <Fragment key={row.id}>
+                            <div className="orchard-row-column">
+                              <div className="row-spots-vertical">
+                                {row.spotIds.map((spotId) => {
+                                  const spot = data.plantingSpots.find((item) => item.id === spotId)!
+                                  const tree = spot.currentTreeId ? treeById.get(spot.currentTreeId) : undefined
+                                  const isSelected = tree?.id === selectedTreeId
+                                  const spacingUnknown = Boolean(tree && crownDiameterFtForSpacing(tree) == null)
+                                  const pairAfter = rowSpacing?.pairs.find((p) => p.fromSpotId === spot.id)
+                                  const rowStart = feetFromRowStartBySpotId.get(spot.id)
+
+                                  return (
+                                    <Fragment key={spot.id}>
+                                      <div
+                                        className={`spot ${spot.kind} spot-zone-${spot.zoneId.replace(/[^a-z0-9-]+/gi, '-')} ${isSelected ? 'spot-selected' : ''} ${spacingUnknown ? 'spot--spacing-unknown' : ''}`}
+                                        onDragOver={(event) => event.preventDefault()}
+                                        onDrop={() => handleDropToSpot(spot.id)}
+                                      >
+                                        {tree ? (
+                                          <div className="tree-chip-wrap">
+                                            <button
+                                              className={`tree-chip orchard-cat-${getOrchardDisplayCategory(tree)} species-${tree.species.toLowerCase().replace(/[^a-z0-9]+/g, '-')} ${tree.manualOverride.isManualOverride ? 'manual' : ''} ${spacingUnknown ? 'tree-chip--spacing-unknown' : ''}`}
+                                              draggable
+                                              onClick={() => selectTreeForPlanner(tree.id)}
+                                              onDragStart={() => setDraggedTreeId(tree.id)}
+                                              onDragEnd={() => setDraggedTreeId(null)}
+                                              type="button"
+                                              title={
+                                                spacingUnknown
+                                                  ? 'Crown spread unknown — add mature width or height'
+                                                  : undefined
+                                              }
+                                            >
+                                              <span>{tree.varietyName}</span>
+                                              <small>{getTreeSpeciesLabel(tree)}</small>
+                                              <small className="tree-chip-size">{formatMatureSizeWithHeight(tree)}</small>
+                                              {rowStart && (rowStart.feetFromRowStart > 0 || rowStart.partial) ? (
+                                                <small
+                                                  className="tree-chip-row-start"
+                                                  title={
+                                                    rowStart.partial
+                                                      ? 'Feet along row from the first spot; omits gaps with unknown crown spread'
+                                                      : 'Feet along row from the first spot'
+                                                  }
+                                                >
+                                                  {rowStart.feetFromRowStart}′ from row start
+                                                  {rowStart.partial ? '\u202f*' : ''}
+                                                </small>
+                                              ) : null}
+                                              <small className="tree-chip-spot-pill">{tree.currentSpotId}</small>
+                                            </button>
+                                            <button
+                                              className="chip-mini-action"
+                                              onClick={(event) => {
+                                                event.stopPropagation()
+                                                moveTree(tree.id, null)
+                                              }}
+                                              type="button"
+                                            >
+                                              Send to staging
+                                            </button>
+                                          </div>
+                                        ) : null}
+                                      </div>
+                                      {pairAfter ? (
+                                        <div
+                                          className={`row-inter-tree-spacing ${pairAfter.unknown ? 'row-inter-tree-spacing--unknown' : ''}`}
+                                          aria-hidden
+                                        >
+                                          {pairAfter.unknown ? (
+                                            <span>
+                                              <span className="orchard-arrow-glyph">{'\u2195'}</span> —
+                                            </span>
+                                          ) : (
+                                            <span>
+                                              <span className="orchard-arrow-glyph">{'\u2195'}</span> {pairAfter.gapFt}′
+                                            </span>
+                                          )}
+                                        </div>
+                                      ) : null}
+                                    </Fragment>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                            {nextRow ? (
+                              <div
+                                className={`orchard-map-gap-strip${stripIsTractorLane ? ' orchard-map-gap-strip--drive-lane' : ''}`}
+                                aria-hidden
+                                title={stripIsTractorLane ? 'Tractor / equipment lane between rows' : undefined}
+                              >
+                                <span
+                                  className={`orchard-map-gap-strip__label${stripIsTractorLane ? ' orchard-map-gap-strip__label--drive-lane' : ''}`}
+                                >
+                                  <span className="orchard-arrow-glyph">{'\u2194'}</span>{' '}
+                                  {betweenRowGapFt}′
+                                </span>
+                              </div>
+                            ) : null}
+                          </Fragment>
+                        )
+                      })}
+                    </div>
                   </>
                 ) : null}
               </div>
