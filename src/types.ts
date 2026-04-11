@@ -1,5 +1,7 @@
 export type TreeActivityStatus = 'assigned' | 'holding' | 'unassigned'
 
+export type TreeDeliveryStatus = 'on-site' | 'in-transit'
+
 export interface PlacementReason {
   code: string
   label: string
@@ -77,6 +79,8 @@ export interface Tree {
   activePlantingInventory: boolean
   placeholderOnly: boolean
   sourceRefs: string[]
+  /** Physical receipt: on site vs still shipping. */
+  deliveryStatus: TreeDeliveryStatus
 }
 
 export interface PlantingSpot {

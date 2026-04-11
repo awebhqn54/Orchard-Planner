@@ -1,6 +1,11 @@
 import type { ReactNode } from 'react'
 import type { Tree, TreeSeedRecord } from '../types'
 import { formatMaybe, formatUsd } from '../utils/format'
+import {
+  deliveryStatusForSourceRecordId,
+  deliveryStatusLabel,
+  resolveDeliveryStatus,
+} from '../utils/treeDeliveryStatus'
 import { getSpeciesPillDisplay } from '../utils/speciesPillDisplay'
 
 function DetailSection({ title, children }: { title: string; children: ReactNode }) {
@@ -40,6 +45,7 @@ export function VarietyDetailPanel({
   }
 
   const speciesPill = getSpeciesPillDisplay(tree ?? record)
+  const deliveryStatus = tree ? resolveDeliveryStatus(tree) : deliveryStatusForSourceRecordId(record.id)
 
   return (
     <div className="detail-stack">
@@ -48,6 +54,14 @@ export function VarietyDetailPanel({
 
       <DetailSection title="Sourcing & order">
         <div className="detail-plain-lines">
+          <p>
+            <span className="detail-plain-k">Physical inventory</span>{' '}
+            {deliveryStatus === 'in-transit' ? (
+              <span className="shipping-note-pill">{deliveryStatusLabel(deliveryStatus, record.id)}</span>
+            ) : (
+              deliveryStatusLabel(deliveryStatus, record.id)
+            )}
+          </p>
           <p>
             <span className="detail-plain-k">Supplier</span> {formatMaybe(record.supplier)}
           </p>

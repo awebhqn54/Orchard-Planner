@@ -15,6 +15,11 @@ import {
 } from './utils/inRowTreeSpacing'
 import { formatMatureSizeWithHeight } from './utils/matureSizeDisplay'
 import { getOrchardDisplayCategory } from './utils/orchardDisplayCategory'
+import {
+  deliveryStatusChipLine,
+  deliveryStatusLabel,
+  resolveDeliveryStatus,
+} from './utils/treeDeliveryStatus'
 import type { NormalizedOrchardData, PlantingSpot, Tree } from './types'
 
 const bundle: ImportedInventoryBundle = bundledProjectImportBundle
@@ -183,7 +188,7 @@ function App() {
           id: 'staging-overflow',
           severity: 'warning',
           summary: 'Some active trees remain unassigned.',
-          detail: `${next.stagingTreeIds.length} trees are currently in the holding area.`,
+          detail: `${next.stagingTreeIds.length} trees are not placed on a planting spot.`,
         })
       }
 
@@ -197,15 +202,6 @@ function App() {
     }
 
     moveTree(draggedTreeId, spotId)
-    setDraggedTreeId(null)
-  }
-
-  function handleDropToHolding() {
-    if (!draggedTreeId) {
-      return
-    }
-
-    moveTree(draggedTreeId, null)
     setDraggedTreeId(null)
   }
 
@@ -460,6 +456,10 @@ function App() {
                                   const spacingUnknown = Boolean(tree && crownDiameterFtForSpacing(tree) == null)
                                   const pairAfter = rowSpacing?.pairs.find((p) => p.fromSpotId === spot.id)
                                   const rowStart = feetFromRowStartBySpotId.get(spot.id)
+                                  const delivery = tree ? resolveDeliveryStatus(tree) : 'on-site'
+                                  const deliveryLine = tree
+                                    ? deliveryStatusChipLine(tree.sourceRecordId, delivery)
+                                    : null
 
                                   return (
                                     <Fragment key={spot.id}>
@@ -469,49 +469,45 @@ function App() {
                                         onDrop={() => handleDropToSpot(spot.id)}
                                       >
                                         {tree ? (
-                                          <div className="tree-chip-wrap">
-                                            <button
-                                              className={`tree-chip orchard-cat-${getOrchardDisplayCategory(tree)} species-${tree.species.toLowerCase().replace(/[^a-z0-9]+/g, '-')} ${tree.manualOverride.isManualOverride ? 'manual' : ''} ${spacingUnknown ? 'tree-chip--spacing-unknown' : ''}`}
-                                              draggable
-                                              onClick={() => selectTreeForPlanner(tree.id)}
-                                              onDragStart={() => setDraggedTreeId(tree.id)}
-                                              onDragEnd={() => setDraggedTreeId(null)}
-                                              type="button"
-                                              title={
-                                                spacingUnknown
-                                                  ? 'Crown spread unknown — add mature width or height'
-                                                  : undefined
-                                              }
-                                            >
-                                              <span>{tree.varietyName}</span>
-                                              <small>{getTreeSpeciesLabel(tree)}</small>
-                                              <small className="tree-chip-size">{formatMatureSizeWithHeight(tree)}</small>
-                                              {rowStart && (rowStart.feetFromRowStart > 0 || rowStart.partial) ? (
-                                                <small
-                                                  className="tree-chip-row-start"
-                                                  title={
-                                                    rowStart.partial
-                                                      ? 'Feet along row from the first spot; omits gaps with unknown crown spread'
-                                                      : 'Feet along row from the first spot'
-                                                  }
-                                                >
-                                                  {rowStart.feetFromRowStart}′ from row start
-                                                  {rowStart.partial ? '\u202f*' : ''}
-                                                </small>
-                                              ) : null}
-                                              <small className="tree-chip-spot-pill">{tree.currentSpotId}</small>
-                                            </button>
-                                            <button
-                                              className="chip-mini-action"
-                                              onClick={(event) => {
-                                                event.stopPropagation()
-                                                moveTree(tree.id, null)
-                                              }}
-                                              type="button"
-                                            >
-                                              Send to staging
-                                            </button>
-                                          </div>
+                                          <button
+                                            className={`tree-chip orchard-cat-${getOrchardDisplayCategory(tree)} species-${tree.species.toLowerCase().replace(/[^a-z0-9]+/g, '-')} ${tree.manualOverride.isManualOverride ? 'manual' : ''} ${spacingUnknown ? 'tree-chip--spacing-unknown' : ''} ${delivery === 'in-transit' ? 'tree-chip--in-transit' : ''}`}
+                                            draggable
+                                            onClick={() => selectTreeForPlanner(tree.id)}
+                                            onDragStart={() => setDraggedTreeId(tree.id)}
+                                            onDragEnd={() => setDraggedTreeId(null)}
+                                            type="button"
+                                            title={
+                                              [
+                                                spacingUnknown ? 'Crown spread unknown — add mature width or height' : null,
+                                                delivery === 'in-transit'
+                                                  ? deliveryStatusLabel('in-transit', tree.sourceRecordId)
+                                                  : null,
+                                              ]
+                                                .filter(Boolean)
+                                                .join(' · ') || undefined
+                                            }
+                                          >
+                                            <span>{tree.varietyName}</span>
+                                            {deliveryLine ? (
+                                              <small className="tree-chip-delivery-pill">{deliveryLine}</small>
+                                            ) : null}
+                                            <small>{getTreeSpeciesLabel(tree)}</small>
+                                            <small className="tree-chip-size">{formatMatureSizeWithHeight(tree)}</small>
+                                            {rowStart && (rowStart.feetFromRowStart > 0 || rowStart.partial) ? (
+                                              <small
+                                                className="tree-chip-row-start"
+                                                title={
+                                                  rowStart.partial
+                                                    ? 'Feet along row from the first spot; omits gaps with unknown crown spread'
+                                                    : 'Feet along row from the first spot'
+                                                }
+                                              >
+                                                {rowStart.feetFromRowStart}′ from row start
+                                                {rowStart.partial ? '\u202f*' : ''}
+                                              </small>
+                                            ) : null}
+                                            <small className="tree-chip-spot-pill">{tree.currentSpotId}</small>
+                                          </button>
                                         ) : null}
                                       </div>
                                       {pairAfter ? (
@@ -556,40 +552,6 @@ function App() {
                   </>
                 ) : null}
               </div>
-            </div>
-          </article>
-
-          <article
-            className="card holding-panel"
-            onDragOver={(event) => event.preventDefault()}
-            onDrop={handleDropToHolding}
-          >
-            <div className="panel-header">
-              <div>
-                <h2>Holding / staging area</h2>
-                <p>Trees can sit here without shifting or renumbering fixed orchard spots.</p>
-              </div>
-            </div>
-            <div className="holding-tray">
-              {data?.trees
-                .filter((tree) => !tree.currentSpotId)
-                .map((tree) => (
-                  <button
-                    key={tree.id}
-                    className={`tree-chip holding-chip orchard-cat-${getOrchardDisplayCategory(tree)} species-${tree.species.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}
-                    draggable
-                    onClick={() => selectTreeForPlanner(tree.id)}
-                    onDragStart={() => setDraggedTreeId(tree.id)}
-                    onDragEnd={() => setDraggedTreeId(null)}
-                    type="button"
-                  >
-                    <span>{tree.varietyName}</span>
-                    <small>{getTreeSpeciesLabel(tree)}</small>
-                    <small className="tree-chip-size">{formatMatureSizeWithHeight(tree)}</small>
-                    <small>Unassigned</small>
-                  </button>
-                ))}
-              {!data?.trees.some((tree) => !tree.currentSpotId) ? <p className="empty-state">No trees in holding.</p> : null}
             </div>
           </article>
         </section>

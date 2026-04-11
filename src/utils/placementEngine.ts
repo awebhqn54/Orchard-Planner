@@ -11,6 +11,7 @@ import type {
   Tree,
   TreeSeedRecord,
 } from '../types'
+import { deliveryStatusForSourceRecordId } from './treeDeliveryStatus'
 
 /**
  * Spacing along the row axis from the fence (ft): 24' fence→Row 1, then alternating 18'/24' between rows.
@@ -104,6 +105,7 @@ function expandInventory(records: TreeSeedRecord[]) {
         activePlantingInventory: record.activePlantingInventory ?? !record.placeholderOnly,
         placeholderOnly: Boolean(record.placeholderOnly),
         sourceRefs: record.sourceRefs ?? [],
+        deliveryStatus: deliveryStatusForSourceRecordId(record.id),
       } satisfies Tree
     }),
   )
@@ -472,7 +474,7 @@ export function createPlacementWarnings(spots: PlantingSpot[], trees: Tree[]) {
       id: 'staging-overflow',
       severity: 'warning',
       summary: 'Some active trees remain unassigned.',
-      detail: `${stagingTrees.length} active trees are in holding because no compatible spot was available.`,
+      detail: `${stagingTrees.length} active trees are not placed on a planting spot because no compatible spot was available.`,
     })
   }
 
