@@ -12,7 +12,22 @@ import type {
   TreeSeedRecord,
 } from '../types'
 
-const ROW_OFFSETS_FEET = [24, 42, 66, 84, 108]
+/**
+ * Spacing along the row axis from the fence (ft): 24' fence→Row 1, then alternating 18'/24' between rows.
+ * Seven segments for seven row lines; no trailing segment past Row 7.
+ */
+export const ROW_SPACING_SEGMENTS_FT = [24, 18, 24, 18, 24, 18, 24] as const
+
+function cumulativeOffsetsFromSpacingSegments(segments: readonly number[]): number[] {
+  let acc = 0
+  return segments.map((segment) => {
+    acc += segment
+    return acc
+  })
+}
+
+/** Cumulative distance from fence to each row line (R1…R7). */
+const ROW_OFFSETS_FEET = cumulativeOffsetsFromSpacingSegments(ROW_SPACING_SEGMENTS_FT)
 
 function padSpotNumber(value: number) {
   return String(value).padStart(2, '0')
@@ -117,7 +132,7 @@ function buildMinimalOrchardZones(spotsPerRow: number): OrchardZone[] {
       id: 'orchard-grid',
       label: 'Planting grid',
       description: 'All spots are active and movable for all tree types, including persimmons.',
-      rowRange: [1, 5],
+      rowRange: [1, ROW_OFFSETS_FEET.length],
       columnRange: [1, spotsPerRow],
       purpose: 'General tree layout.',
       accepts: ['Apple', 'Pear', 'Plum', 'Sweet Cherry', 'Tart Cherry', 'Peach', 'Apricot', 'Persimmon'],
@@ -582,7 +597,7 @@ export function buildNormalizedOrchardData(args: {
     placementAssumptions: args.placementAssumptions,
     orchardConfig: {
       rowOffsetsFeet: ROW_OFFSETS_FEET,
-      rowCount: 5,
+      rowCount: ROW_OFFSETS_FEET.length,
       spotsPerRow,
     },
     orchardRows,

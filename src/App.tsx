@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState, type CSSProperties } from 'react'
 import './App.css'
 import { VarietyDetailPanel } from './components/VarietyDetailPanel'
 import { defaultStarterLayout } from './data/defaultStarterLayout'
@@ -342,59 +342,90 @@ function App() {
             </div>
 
             <div className="orchard-map-scroll">
-              <div className="orchard-map">
-                {data?.orchardRows.map((row) => (
-                  <div className="orchard-row-column" key={row.id}>
-                    <div className="row-label row-label-top">
-                      <strong>{row.label}</strong>
-                      <span>{row.offsetFeetFromFence} ft from fence</span>
+              <div
+                className="orchard-map"
+                style={
+                  {
+                    '--orchard-map-columns': data?.orchardRows.length ?? 5,
+                    '--orchard-map-strip-count': data?.orchardRows.length ?? 5,
+                  } as CSSProperties
+                }
+              >
+                {data && data.orchardRows.length > 0 ? (
+                  <>
+                    <div
+                      className="orchard-map-gap-strip orchard-map-gap-strip--fence"
+                      aria-hidden
+                      title="Fence to Row 1"
+                    >
+                      <span className="orchard-map-gap-strip__label">
+                        {data.orchardRows[0].offsetFeetFromFence}′ →
+                      </span>
                     </div>
-                    <div className="row-spots-vertical">
-                      {row.spotIds.map((spotId) => {
-                        const spot = data.plantingSpots.find((item) => item.id === spotId)!
-                        const tree = spot.currentTreeId ? treeById.get(spot.currentTreeId) : undefined
-                        const isSelected = tree?.id === selectedTreeId
-
-                        return (
-                          <div
-                            key={spot.id}
-                            className={`spot ${spot.kind} spot-zone-${spot.zoneId.replace(/[^a-z0-9-]+/gi, '-')} ${isSelected ? 'spot-selected' : ''}`}
-                            onDragOver={(event) => event.preventDefault()}
-                            onDrop={() => handleDropToSpot(spot.id)}
-                          >
-                            {tree ? (
-                              <div className="tree-chip-wrap">
-                                <button
-                                  className={`tree-chip orchard-cat-${getOrchardDisplayCategory(tree)} species-${tree.species.toLowerCase().replace(/[^a-z0-9]+/g, '-')} ${tree.manualOverride.isManualOverride ? 'manual' : ''}`}
-                                  draggable
-                                  onClick={() => selectTreeForPlanner(tree.id)}
-                                  onDragStart={() => setDraggedTreeId(tree.id)}
-                                  onDragEnd={() => setDraggedTreeId(null)}
-                                  type="button"
-                                >
-                                  <span>{tree.varietyName}</span>
-                                  <small>{getTreeSpeciesLabel(tree)}</small>
-                                  <small className="tree-chip-size">{formatMatureSizeWithHeight(tree)}</small>
-                                  <small>{tree.currentSpotId}</small>
-                                </button>
-                                <button
-                                  className="chip-mini-action"
-                                  onClick={(event) => {
-                                    event.stopPropagation()
-                                    moveTree(tree.id, null)
-                                  }}
-                                  type="button"
-                                >
-                                  Send to staging
-                                </button>
-                              </div>
-                            ) : null}
+                    {data.orchardRows.map((row, rowIdx) => (
+                      <Fragment key={row.id}>
+                        <div className="orchard-row-column">
+                          <div className="row-label row-label-top">
+                            <strong>{row.label}</strong>
+                            <span>{row.offsetFeetFromFence} ft from fence</span>
                           </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                ))}
+                          <div className="row-spots-vertical">
+                            {row.spotIds.map((spotId) => {
+                              const spot = data.plantingSpots.find((item) => item.id === spotId)!
+                              const tree = spot.currentTreeId ? treeById.get(spot.currentTreeId) : undefined
+                              const isSelected = tree?.id === selectedTreeId
+
+                              return (
+                                <div
+                                  key={spot.id}
+                                  className={`spot ${spot.kind} spot-zone-${spot.zoneId.replace(/[^a-z0-9-]+/gi, '-')} ${isSelected ? 'spot-selected' : ''}`}
+                                  onDragOver={(event) => event.preventDefault()}
+                                  onDrop={() => handleDropToSpot(spot.id)}
+                                >
+                                  {tree ? (
+                                    <div className="tree-chip-wrap">
+                                      <button
+                                        className={`tree-chip orchard-cat-${getOrchardDisplayCategory(tree)} species-${tree.species.toLowerCase().replace(/[^a-z0-9]+/g, '-')} ${tree.manualOverride.isManualOverride ? 'manual' : ''}`}
+                                        draggable
+                                        onClick={() => selectTreeForPlanner(tree.id)}
+                                        onDragStart={() => setDraggedTreeId(tree.id)}
+                                        onDragEnd={() => setDraggedTreeId(null)}
+                                        type="button"
+                                      >
+                                        <span>{tree.varietyName}</span>
+                                        <small>{getTreeSpeciesLabel(tree)}</small>
+                                        <small className="tree-chip-size">{formatMatureSizeWithHeight(tree)}</small>
+                                        <small>{tree.currentSpotId}</small>
+                                      </button>
+                                      <button
+                                        className="chip-mini-action"
+                                        onClick={(event) => {
+                                          event.stopPropagation()
+                                          moveTree(tree.id, null)
+                                        }}
+                                        type="button"
+                                      >
+                                        Send to staging
+                                      </button>
+                                    </div>
+                                  ) : null}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                        {rowIdx < data.orchardRows.length - 1 ? (
+                          <div className="orchard-map-gap-strip" aria-hidden>
+                            <span className="orchard-map-gap-strip__label">
+                              ↔{' '}
+                              {data.orchardRows[rowIdx + 1].offsetFeetFromFence - row.offsetFeetFromFence}′
+                            </span>
+                          </div>
+                        ) : null}
+                      </Fragment>
+                    ))}
+                  </>
+                ) : null}
               </div>
             </div>
           </article>
