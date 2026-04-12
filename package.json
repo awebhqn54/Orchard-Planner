@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "extract:tendolle": "node scripts/extract-tendolle-sheet.mjs",
+    "research:mature-size": "node scripts/research-mature-size.mjs",
     "lint": "eslint .",
     "preview": "vite preview"
   },

@@ -118,6 +118,50 @@ function recordIdFor(varietyRaw) {
   return STABLE_ID_BY_VARIETY[key] ?? `sheet-${key.replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')}`
 }
 
+/** Product URLs that must match `supplier` when the spreadsheet Link column is wrong or stale. */
+const LINK_OVERRIDE_BY_RECORD_ID = {
+  'eat-zestar': 'https://fedcoseeds.com/trees/zestar-apple-7280',
+  'sweet-lapins': 'https://rootstofruitsnursery.com/collections/sweet-cherry-trees/products/lapins',
+}
+
+/** Freeform rootstock notes applied after prune (nursery wording beyond `rootstockCode`). */
+const ROOTSTOCK_NOTE_OVERRIDE_BY_RECORD_ID = {
+  'peach-contender': 'Lovell Dwarf',
+}
+
+const ROOTSTOCK_CODE_OVERRIDE = JSON.parse(
+  readFileSync(join(root, 'src/data/rootstockCodeOverrides.json'), 'utf8'),
+)
+const TRAIT_OVERRIDES = JSON.parse(readFileSync(join(root, 'src/data/traitOverrides.json'), 'utf8'))
+
+/** Keep in dataset for reference, but hide from active planning views. */
+const ARCHIVED_FROM_PLANNER_IDS = new Set(['persimmon-prairie-dawn'])
+const PLANTED_PERSIMMON_IDS = new Set(['persimmon-meader', 'persimmon-prairie-star'])
+
+function isUnconfirmedRootstockNote(s) {
+  const t = String(s || '').trim().toLowerCase()
+  if (!t) return true
+  if (t === 'unknown') return true
+  if (t.includes('varies')) return true
+  if (t.includes('check invoice')) return true
+  if (t === 'dwarf seedling') return true
+  if (t === 'seedling') return true
+  return false
+}
+
+/** Receipt / curated rootstock identifier; falls back to spreadsheet when it already names a concrete stock. */
+function applyRootstockCodeFields(o, id) {
+  const fromEvidence = ROOTSTOCK_CODE_OVERRIDE[id]
+  if (fromEvidence) {
+    o.rootstockCode = fromEvidence
+    return
+  }
+  const rs = o.rootstock
+  if (!rs || typeof rs !== 'string') return
+  if (isUnconfirmedRootstockNote(rs)) return
+  o.rootstockCode = rs
+}
+
 function parseQty(raw) {
   const n = Number.parseInt(String(raw || '').replace(/\D/g, ''), 10)
   return Number.isFinite(n) ? n : 0
@@ -171,6 +215,54 @@ function cleanNote(s) {
   return t
 }
 
+function normalizeComparableText(s) {
+  return String(s || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[.,;:()[\]{}]/g, ' ')
+    .replace(/\s+/g, ' ')
+}
+
+/** Collapse punctuation/spacing so MM106 and MM.106 match for dedupe vs `rootstockCode`. */
+function rootstockIdentityKey(s) {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '')
+}
+
+function pruneRedundantRootstockNote(o) {
+  const rootstock = cleanNote(o.rootstock)
+  if (!rootstock) {
+    delete o.rootstock
+    return
+  }
+  const rootstockNorm = normalizeComparableText(rootstock)
+  const sizeNorm = normalizeComparableText(o.matureSizeText)
+  const sameAsCode =
+    o.rootstockCode &&
+    rootstockIdentityKey(rootstock) &&
+    rootstockIdentityKey(rootstock) === rootstockIdentityKey(String(o.rootstockCode))
+  if (sameAsCode || (rootstockNorm && rootstockNorm === sizeNorm)) {
+    delete o.rootstock
+    return
+  }
+  o.rootstock = rootstock
+}
+
+function applyTraitOverrides(o, id) {
+  const override = TRAIT_OVERRIDES[id]
+  if (!override) return
+  if (Object.prototype.hasOwnProperty.call(override, 'bloomGroupTiming')) {
+    o.bloomGroupTiming = cleanNote(override.bloomGroupTiming)
+  }
+  if (Object.prototype.hasOwnProperty.call(override, 'pollinationNotes')) {
+    o.pollinationNotes = cleanNote(override.pollinationNotes)
+  }
+  if (Object.prototype.hasOwnProperty.call(override, 'matureSizeText')) {
+    o.matureSizeText = cleanNote(override.matureSizeText)
+  }
+}
+
 function combineDisease(fire, scab, other) {
   const parts = []
   const f = cleanNote(fire)
@@ -187,7 +279,6 @@ function buildRecord(row) {
   const rawSpecies = String(row['Species'] || '').trim()
   const species = normalizeSpecies(rawSpecies)
   const rawOrchardSection = String(row['Orchard Section'] || '').trim()
-  const orchardSection = deriveSection(species, rawOrchardSection)
   const qty = parseQty(row['Qty'])
   const matureHeightFt = parseHeightFt(row['Mature Height (ft)'])
   const sizeClass = toSizeClass(row['Size Class'], matureHeightFt)
@@ -198,6 +289,9 @@ function buildRecord(row) {
   const diseaseNotes = combineDisease(fire, scab, otherDis)
 
   const id = recordIdFor(varietyName)
+  const orchardSectionDefault = deriveSection(species, rawOrchardSection)
+  const orchardSection =
+    species === 'Persimmon' && PLANTED_PERSIMMON_IDS.has(id) ? 'Persimmons' : orchardSectionDefault
   const isStandard = parseStandard(row['Standard?'])
   const costPerTreeUsd = parseUsd(row['Cost/Tree (USD)'])
   let totalUsd = parseUsd(row['Total (USD)'])
@@ -205,7 +299,7 @@ function buildRecord(row) {
     totalUsd = Math.round(costPerTreeUsd * qty * 100) / 100
   }
 
-  const placeholderOnly = species === 'Persimmon'
+  const placeholderOnly = species === 'Persimmon' && !PLANTED_PERSIMMON_IDS.has(id)
   const activePlantingInventory = !placeholderOnly && qty > 0
 
   /** @type {Record<string, unknown>} */
@@ -246,6 +340,23 @@ function buildRecord(row) {
     sourceRefs: ['Tendolle Orchard Varieties .xlsx'],
   }
 
+  const linkOverride = LINK_OVERRIDE_BY_RECORD_ID[id]
+  if (linkOverride) {
+    o.link = linkOverride
+  }
+
+  applyRootstockCodeFields(o, id)
+  applyTraitOverrides(o, id)
+  pruneRedundantRootstockNote(o)
+  const curatedNote = ROOTSTOCK_NOTE_OVERRIDE_BY_RECORD_ID[id]
+  if (curatedNote) {
+    o.rootstock = curatedNote
+  }
+
+  if (!String(o.rootstockCode ?? '').trim()) {
+    o.rootstockCode = 'Unknown'
+  }
+
   for (const k of Object.keys(o)) {
     if (o[k] === undefined) delete o[k]
   }
@@ -282,9 +393,79 @@ const inactive = []
 
 for (const row of dataRows) {
   const obj = buildRecord(row)
-  if (obj.quantity > 0) active.push(formatRecord(obj))
-  else inactive.push(formatRecord(obj))
+  if (ARCHIVED_FROM_PLANNER_IDS.has(obj.id)) {
+    inactive.push({ ...obj, quantity: 0, activePlantingInventory: false, placeholderOnly: false })
+  } else if (obj.quantity > 0) {
+    active.push(obj)
+  } else {
+    inactive.push(obj)
+  }
 }
+
+function writeRootstockGapReport(activeObjs, inactiveObjs) {
+  const all = [...activeObjs, ...inactiveObjs].sort((a, b) => String(a.id).localeCompare(String(b.id)))
+  const missing = []
+  const unknownMarked = []
+  const ambiguous = []
+  const lowConfidence = []
+
+  for (const r of all) {
+    const code = r.rootstockCode
+    const row = { id: r.id, variety: r.varietyName, note: r.rootstock }
+    if (!code) {
+      missing.push(row)
+      continue
+    }
+    if (String(code).toLowerCase() === 'unknown') {
+      unknownMarked.push({ ...row, matureSize: r.matureSizeText })
+      continue
+    }
+    if (String(code).includes('/')) {
+      ambiguous.push({ ...row, code })
+      continue
+    }
+    if (/seedling/i.test(code) || /^dwarf\s+seedling$/i.test(String(r.rootstock || ''))) {
+      lowConfidence.push({ ...row, code })
+    }
+  }
+
+  const lines = [
+    '# Rootstock gaps (auto-generated)',
+    '',
+    'Generated by `npm run extract:tendolle` based on spreadsheet + `src/data/rootstockCodeOverrides.json`.',
+    '',
+    '`rootstockCode` defaults to **Unknown** when no cultivar-level stock is known; use **Mature size** / notes for vigor (e.g. dwarf).',
+    '',
+    '## Missing rootstock code',
+    '',
+    ...missing.map((m) => `- **${m.id}** (${m.variety}) — spreadsheet note: ${m.note ?? '—'}`),
+    '',
+    '## Unknown (no cultivar code yet)',
+    '',
+    ...unknownMarked.map(
+      (m) =>
+        `- **${m.id}** (${m.variety}) — mature size: ${m.matureSize ?? '—'} — note: ${m.note ?? '—'}`,
+    ),
+    '',
+    '## Ambiguous / multiple codes (per-order split not tracked per tree)',
+    '',
+    ...ambiguous.map((m) => `- **${m.id}** (${m.variety}) — \`${m.code}\` — note: ${m.note ?? '—'}`),
+    '',
+    '## Lower-confidence identifiers',
+    '',
+    'Seedling-level or generic nursery wording; confirm from tags or nursery if needed.',
+    '',
+    ...lowConfidence.map((m) => `- **${m.id}** (${m.variety}) — \`${m.code}\``),
+    '',
+  ]
+
+  writeFileSync(join(root, 'docs/rootstock-gaps.md'), lines.join('\n'), 'utf8')
+}
+
+writeRootstockGapReport(active, inactive)
+
+const activeFormatted = active.map(formatRecord)
+const inactiveFormatted = inactive.map(formatRecord)
 
 const header = `/**
  * AUTO-GENERATED by scripts/extract-tendolle-sheet.mjs from docs/Tendolle Orchard Varieties .xlsx
@@ -296,8 +477,8 @@ import type { TreeSeedRecord } from '../types'
 
 const out =
   header +
-  `export const tendolleInventoryRecordsRaw: TreeSeedRecord[] = [\n${active.join(',\n')},\n]\n\n` +
-  `export const tendolleInactiveInventoryRecordsRaw: TreeSeedRecord[] = [\n${inactive.join(',\n')},\n]\n`
+  `export const tendolleInventoryRecordsRaw: TreeSeedRecord[] = [\n${activeFormatted.join(',\n')},\n]\n\n` +
+  `export const tendolleInactiveInventoryRecordsRaw: TreeSeedRecord[] = [\n${inactiveFormatted.join(',\n')},\n]\n`
 
 writeFileSync(join(root, 'src/data/tendolleSheetExtract.generated.ts'), out, 'utf8')
-console.log(`Wrote ${active.length} active + ${inactive.length} inactive records.`)
+console.log(`Wrote ${active.length} active + ${inactive.length} inactive records + docs/rootstock-gaps.md`)

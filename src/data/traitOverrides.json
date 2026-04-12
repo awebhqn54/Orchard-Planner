@@ -1,0 +1,50 @@
+{
+  "peach-reliance": {
+    "bloomGroupTiming": "Mid-spring",
+    "pollinationNotes": "Self-fertile",
+    "matureSizeText": "Seedling ~10-15' (large) Dwarf"
+  },
+  "apricot-mormon": {
+    "matureSizeText": "Dwarf seedling ~10–15' (often maintained under ~12')"
+  },
+  "sweet-lapins": {
+    "bloomGroupTiming": "Mid-spring",
+    "pollinationNotes": "Self-fertile"
+  },
+  "sweet-kristin": {
+    "bloomGroupTiming": "Mid-spring",
+    "pollinationNotes": "Requires cross-pollination (Lapins recommended)"
+  },
+  "tart-montmorency": {
+    "bloomGroupTiming": "Mid-spring",
+    "pollinationNotes": "Self-fertile"
+  },
+  "tart-balaton": {
+    "bloomGroupTiming": "Mid-spring",
+    "pollinationNotes": "Self-fertile"
+  },
+  "cider-harry-masters-jersey": {
+    "bloomGroupTiming": "Mid-spring",
+    "pollinationNotes": "Requires cross-pollination"
+  },
+  "cider-foxwhelp": {
+    "bloomGroupTiming": "Mid-spring",
+    "pollinationNotes": "Requires cross-pollination"
+  },
+  "cider-priscilla": {
+    "bloomGroupTiming": "Mid-spring",
+    "pollinationNotes": "Requires cross-pollination"
+  },
+  "persimmon-meader": {
+    "bloomGroupTiming": "Late spring",
+    "pollinationNotes": "Mostly self-fertile"
+  },
+  "persimmon-prairie-star": {
+    "bloomGroupTiming": "Late spring",
+    "pollinationNotes": "Self-fertile"
+  },
+  "persimmon-prairie-dawn": {
+    "bloomGroupTiming": "Late spring",
+    "pollinationNotes": "Self-fertile"
+  }
+}

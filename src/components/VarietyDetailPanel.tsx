@@ -1,12 +1,9 @@
 import type { ReactNode } from 'react'
 import type { Tree, TreeSeedRecord } from '../types'
 import { formatMaybe, formatUsd } from '../utils/format'
-import {
-  deliveryStatusForSourceRecordId,
-  deliveryStatusLabel,
-  resolveDeliveryStatus,
-} from '../utils/treeDeliveryStatus'
 import { getSpeciesPillDisplay } from '../utils/speciesPillDisplay'
+import { isRootstockCodeMissing } from '../utils/rootstock'
+import { normalizeComparableText, rootstockIdentityKey } from '../utils/varietyEnrichment'
 
 function DetailSection({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -33,19 +30,41 @@ function formatLink(url: string | undefined) {
   )
 }
 
+function formatBool(v: boolean): string {
+  return v ? 'Yes' : 'No'
+}
+
 export function VarietyDetailPanel({
   tree,
   record,
+  getSpotLabel,
 }: {
   tree: Tree | null
   record: TreeSeedRecord | null
+  getSpotLabel?: (spotId: string | null) => string
 }) {
   if (!record) {
     return <p className="empty-state">Select a variety or tree.</p>
   }
 
   const speciesPill = getSpeciesPillDisplay(tree ?? record)
-  const deliveryStatus = tree ? resolveDeliveryStatus(tree) : deliveryStatusForSourceRecordId(record.id)
+
+  function spotLabel(spotId: string | null): string {
+    if (getSpotLabel) {
+      return getSpotLabel(spotId)
+    }
+    return spotId ?? '—'
+  }
+
+  const f = tree?.fulfillment
+  const rootstockCodeMissing = isRootstockCodeMissing(record)
+  const showRootstockCode = !rootstockCodeMissing
+  const rootstockNote = record.rootstock?.trim()
+  const showRootstockNotes = Boolean(
+    rootstockNote &&
+      rootstockIdentityKey(rootstockNote) !== rootstockIdentityKey(record.rootstockCode) &&
+      normalizeComparableText(rootstockNote) !== normalizeComparableText(record.matureSizeText),
+  )
 
   return (
     <div className="detail-stack">
@@ -54,14 +73,6 @@ export function VarietyDetailPanel({
 
       <DetailSection title="Sourcing & order">
         <div className="detail-plain-lines">
-          <p>
-            <span className="detail-plain-k">Physical inventory</span>{' '}
-            {deliveryStatus === 'in-transit' ? (
-              <span className="shipping-note-pill">{deliveryStatusLabel(deliveryStatus, record.id)}</span>
-            ) : (
-              deliveryStatusLabel(deliveryStatus, record.id)
-            )}
-          </p>
           <p>
             <span className="detail-plain-k">Supplier</span> {formatMaybe(record.supplier)}
           </p>
@@ -80,11 +91,87 @@ export function VarietyDetailPanel({
         </div>
       </DetailSection>
 
+      {tree ? (
+        <DetailSection title="Placement (this tree)">
+          <div className="detail-plain-lines">
+            <p>
+              <span className="detail-plain-k">Current spot</span> {spotLabel(tree.currentSpotId)}
+            </p>
+            <p>
+              <span className="detail-plain-k">Recommended spot</span> {spotLabel(tree.recommendedSpotId)}
+            </p>
+            <p>
+              <span className="detail-plain-k">Manual move</span> {formatBool(tree.manualOverride.isManualOverride)}
+            </p>
+          </div>
+        </DetailSection>
+      ) : null}
+
+      {tree && f ? (
+        <DetailSection title="Fulfillment & physical inventory">
+          <div className="detail-plain-lines">
+            <p>
+              <span className="detail-plain-k">Physically available to plant now</span>{' '}
+              {f.readyToPlant && f.received ? (
+                <span className="detail-status-ok">Yes</span>
+              ) : (
+                <span className="detail-status-warn">No</span>
+              )}
+            </p>
+            <p>
+              <span className="detail-plain-k">Ordered</span> {formatBool(f.ordered)}
+            </p>
+            <p>
+              <span className="detail-plain-k">Received on site</span> {formatBool(f.received)}
+            </p>
+            <p>
+              <span className="detail-plain-k">Missing from shipment</span> {formatBool(f.missing)}
+            </p>
+            <p>
+              <span className="detail-plain-k">Replacement confirmed</span> {formatBool(f.replacementConfirmed)}
+            </p>
+            <p>
+              <span className="detail-plain-k">In transit</span> {formatBool(f.inTransit)}
+            </p>
+            <p>
+              <span className="detail-plain-k">Ready to plant (flag)</span> {formatBool(f.readyToPlant)}
+            </p>
+            <p>
+              <span className="detail-plain-k">Nursery / order source</span> {formatMaybe(f.orderSource)}
+            </p>
+            <p>
+              <span className="detail-plain-k">Shipment group</span> {formatMaybe(f.shipmentGroup)}
+            </p>
+            <p>
+              <span className="detail-plain-k">Expected arrival</span> {formatMaybe(f.expectedArrival)}
+            </p>
+            <p>
+              <span className="detail-plain-k">Notes</span> {formatMaybe(f.notes)}
+            </p>
+          </div>
+        </DetailSection>
+      ) : (
+        <DetailSection title="Fulfillment & physical inventory">
+          <p className="detail-muted">Select a tree on the map to see per-instance fulfillment.</p>
+        </DetailSection>
+      )}
+
       <DetailSection title="Tree traits">
         <div className="detail-plain-lines">
           <p>
-            <span className="detail-plain-k">Rootstock</span> {formatMaybe(record.rootstock)}
+            <span className="detail-plain-k">Rootstock code</span>{' '}
+            {showRootstockCode ? formatMaybe(record.rootstockCode) : '—'}
+            {rootstockCodeMissing ? (
+              <span className="detail-rootstock-missing-flag" title="Confirm from tree tag or nursery invoice">
+                Missing
+              </span>
+            ) : null}
           </p>
+          {showRootstockNotes ? (
+            <p>
+              <span className="detail-plain-k">Rootstock notes</span> {rootstockNote}
+            </p>
+          ) : null}
           <p>
             <span className="detail-plain-k">Mature height (ft)</span> {formatMaybe(record.matureHeightFt)}
           </p>

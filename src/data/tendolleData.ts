@@ -86,10 +86,10 @@ export const tendolleConflicts: SourceConflict[] = [
   },
   {
     id: 'persimmon-placeholder-override',
-    severity: 'warning',
-    summary: 'Persimmons are retained as placeholder-only despite spreadsheet quantities.',
+    severity: 'info',
+    summary: 'Prairie Dawn is archived from active planning while planted persimmons stay active.',
     detail:
-      'The current orchard-planning rules reserve persimmons for future south-side placeholder positions rather than the active planting layout.',
+      'Meader and Prairie Star are treated as active planting inventory. Prairie Dawn is intentionally preserved as an inactive archival record and hidden from default plantable views.',
     sourceIds: ['tendolle-varieties-xlsx', 'tendolle-orchard-plan-pdf'],
   },
   ...prototypeZoneConflicts,

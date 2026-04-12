@@ -79,6 +79,7 @@ export function VarietyCatalog({ records, selectedRecordId, onSelectRecord }: Va
         r.orchardRoleCategory,
         r.ripeningWindow,
         r.rootstock,
+        r.rootstockCode,
         r.diseaseNotes,
         r.ciderFlavorProfile,
       ]

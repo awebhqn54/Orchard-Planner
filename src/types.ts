@@ -1,6 +1,18 @@
 export type TreeActivityStatus = 'assigned' | 'holding' | 'unassigned'
 
-export type TreeDeliveryStatus = 'on-site' | 'in-transit'
+/** Per-tree order / shipment fulfillment (instance-level). */
+export interface TreeFulfillment {
+  orderSource?: string
+  shipmentGroup?: string
+  ordered: boolean
+  received: boolean
+  missing: boolean
+  replacementConfirmed: boolean
+  inTransit: boolean
+  expectedArrival?: string
+  readyToPlant: boolean
+  notes?: string
+}
 
 export interface PlacementReason {
   code: string
@@ -30,6 +42,24 @@ export interface TreePlacement {
   rowNumber: number | null
   columnIndex: number | null
   status: TreeActivityStatus
+}
+
+export type MatureSizeResearchConfidence = 'high' | 'medium' | 'low'
+
+export type MatureSizeResearchLabel = 'dwarf' | 'semi-dwarf' | 'standard' | 'columnar' | 'unknown'
+
+/** Curated mature-size research, kept separate from spacing-driving fields. */
+export interface MatureSizeResearch {
+  researchedMatureHeightFt?: number
+  researchedMatureWidthFt?: number
+  researchedSizeLabel?: MatureSizeResearchLabel
+  researchSourceUrl?: string
+  researchSourceVendor?: string
+  researchEvidenceSnippet?: string
+  researchMatchedRootstock?: string
+  researchConfidence?: MatureSizeResearchConfidence
+  researchReviewedAt?: string
+  researchApproved?: boolean
 }
 
 export interface Tree {
@@ -63,7 +93,11 @@ export interface Tree {
   matureHeightFt?: number
   matureWidthFt?: number
   matureSizeText?: string
+  matureSizeResearch?: MatureSizeResearch
+  /** Spreadsheet / freeform rootstock notes (may include vigor or “check invoice”). */
   rootstock?: string
+  /** Confirmed nursery rootstock identifier when known (e.g. M.111, OHxF 97, Bud 118). */
+  rootstockCode?: string
   sizeClass: 'small' | 'medium' | 'large'
   coldHardiness?: string
   ripeningWindow?: string
@@ -79,8 +113,7 @@ export interface Tree {
   activePlantingInventory: boolean
   placeholderOnly: boolean
   sourceRefs: string[]
-  /** Physical receipt: on site vs still shipping. */
-  deliveryStatus: TreeDeliveryStatus
+  fulfillment: TreeFulfillment
 }
 
 export interface PlantingSpot {
@@ -192,7 +225,9 @@ export interface TreeSeedRecord {
   matureHeightFt?: number
   matureWidthFt?: number
   matureSizeText?: string
+  matureSizeResearch?: MatureSizeResearch
   rootstock?: string
+  rootstockCode?: string
   sizeClass?: 'small' | 'medium' | 'large'
   coldHardiness?: string
   ripeningWindow?: string

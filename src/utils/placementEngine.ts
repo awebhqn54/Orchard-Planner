@@ -11,7 +11,7 @@ import type {
   Tree,
   TreeSeedRecord,
 } from '../types'
-import { deliveryStatusForSourceRecordId } from './treeDeliveryStatus'
+import { defaultFulfillmentFromRecord } from './fulfillment'
 
 /**
  * Spacing along the row axis from the fence (ft): 24' fence→Row 1, then alternating 18'/24' between rows.
@@ -81,7 +81,9 @@ function expandInventory(records: TreeSeedRecord[]) {
         matureHeightFt: record.matureHeightFt,
         matureWidthFt: record.matureWidthFt,
         matureSizeText: record.matureSizeText,
+        matureSizeResearch: record.matureSizeResearch,
         rootstock: record.rootstock,
+        rootstockCode: record.rootstockCode,
         sizeClass,
         coldHardiness: record.coldHardiness,
         ripeningWindow: record.ripeningWindow,
@@ -105,7 +107,7 @@ function expandInventory(records: TreeSeedRecord[]) {
         activePlantingInventory: record.activePlantingInventory ?? !record.placeholderOnly,
         placeholderOnly: Boolean(record.placeholderOnly),
         sourceRefs: record.sourceRefs ?? [],
-        deliveryStatus: deliveryStatusForSourceRecordId(record.id),
+        fulfillment: defaultFulfillmentFromRecord(record.supplier),
       } satisfies Tree
     }),
   )

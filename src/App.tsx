@@ -1,9 +1,17 @@
 import { Fragment, useEffect, useMemo, useState, type CSSProperties } from 'react'
 import './App.css'
 import { VarietyDetailPanel } from './components/VarietyDetailPanel'
+import { FulfillmentSummaryPanel } from './components/FulfillmentSummaryPanel'
 import { defaultStarterLayout } from './data/defaultStarterLayout'
 import { bundledProjectImportBundle } from './utils/importData'
 import type { ImportedInventoryBundle } from './utils/importData'
+import {
+  applyFulfillmentOverrides,
+  fulfillmentChipPillText,
+  fulfillmentPillModifierClass,
+  fulfillmentTooltipSummary,
+  fulfillmentVisualKind,
+} from './utils/fulfillment'
 import { buildNormalizedOrchardData } from './utils/placementEngine'
 import { exportSpotAssignments, exportStakeList } from './utils/export'
 import { applyLayoutSnapshot, captureLayoutSnapshot, downloadLayoutFile, parseLayoutJson } from './utils/layoutSnapshot'
@@ -15,11 +23,7 @@ import {
 } from './utils/inRowTreeSpacing'
 import { formatMatureSizeWithHeight } from './utils/matureSizeDisplay'
 import { getOrchardDisplayCategory } from './utils/orchardDisplayCategory'
-import {
-  deliveryStatusChipLine,
-  deliveryStatusLabel,
-  resolveDeliveryStatus,
-} from './utils/treeDeliveryStatus'
+import { isRootstockCodeMissing } from './utils/rootstock'
 import type { NormalizedOrchardData, PlantingSpot, Tree } from './types'
 
 const bundle: ImportedInventoryBundle = bundledProjectImportBundle
@@ -51,7 +55,8 @@ function canApplyDefaultStarterLayout(data: NormalizedOrchardData): boolean {
 
 function buildOrchardDataWithOptionalDefaultLayout(importBundle: ImportedInventoryBundle): NormalizedOrchardData {
   const rebuilt = buildNormalizedOrchardData(importBundle)
-  return canApplyDefaultStarterLayout(rebuilt) ? applyLayoutSnapshot(rebuilt, defaultStarterLayout) : rebuilt
+  const withLayout = canApplyDefaultStarterLayout(rebuilt) ? applyLayoutSnapshot(rebuilt, defaultStarterLayout) : rebuilt
+  return applyFulfillmentOverrides(withLayout)
 }
 
 function getInitialSelectedTreeId(data: NormalizedOrchardData): string | null {
@@ -78,6 +83,82 @@ function useNarrowViewport(): boolean {
   return narrow
 }
 
+type OrchardTreeChipProps = {
+  tree: Tree
+  spacingUnknown: boolean
+  rowStart: SpotFeetFromRowStart | undefined
+  onSelectTree: (treeId: string) => void
+  onDragStart: (treeId: string) => void
+  onDragEnd: () => void
+}
+
+function OrchardTreeChip({
+  tree,
+  spacingUnknown,
+  rowStart,
+  onSelectTree,
+  onDragStart,
+  onDragEnd,
+}: OrchardTreeChipProps) {
+  const rootstockMissing = isRootstockCodeMissing(tree)
+  const fKind = fulfillmentVisualKind(tree)
+  const pillText = fulfillmentChipPillText(tree)
+  const chipFulfillmentClass =
+    fKind === 'in_transit'
+      ? 'tree-chip--fulfillment-in-transit'
+      : fKind === 'missing_replacement'
+        ? 'tree-chip--fulfillment-missing-replacement'
+        : fKind === 'future_placeholder'
+          ? 'tree-chip--fulfillment-future'
+          : ''
+
+  return (
+    <button
+      className={`tree-chip orchard-cat-${getOrchardDisplayCategory(tree)} species-${tree.species.toLowerCase().replace(/[^a-z0-9]+/g, '-')} ${tree.manualOverride.isManualOverride ? 'manual' : ''} ${spacingUnknown ? 'tree-chip--spacing-unknown' : ''} ${rootstockMissing ? 'tree-chip--rootstock-missing' : ''} ${chipFulfillmentClass}`}
+      draggable
+      onClick={() => onSelectTree(tree.id)}
+      onDragStart={() => onDragStart(tree.id)}
+      onDragEnd={onDragEnd}
+      type="button"
+      title={
+        [
+          spacingUnknown ? 'Crown spread unknown — add mature width or height' : null,
+          rootstockMissing ? 'Rootstock code missing — confirm from tag or nursery' : null,
+          fulfillmentTooltipSummary(tree),
+        ]
+          .filter(Boolean)
+          .join(' · ') || undefined
+      }
+    >
+      <span>{tree.varietyName}</span>
+      {pillText ? (
+        <small className={`tree-chip-fulfillment-pill ${fulfillmentPillModifierClass(fKind)}`}>{pillText}</small>
+      ) : null}
+      {rootstockMissing ? (
+        <small className="tree-chip-rootstock-pill" title="Rootstock code missing">
+          RS?
+        </small>
+      ) : null}
+      <small>{getTreeSpeciesLabel(tree)}</small>
+      <small className="tree-chip-size">{formatMatureSizeWithHeight(tree)}</small>
+      {rowStart && (rowStart.feetFromRowStart > 0 || rowStart.partial) ? (
+        <small
+          className="tree-chip-row-start"
+          title={
+            rowStart.partial
+              ? 'Feet along row from the first spot; omits gaps with unknown crown spread'
+              : 'Feet along row from the first spot'
+          }
+        >
+          {rowStart.feetFromRowStart}′ from row start
+          {rowStart.partial ? '\u202f*' : ''}
+        </small>
+      ) : null}
+      <small className="tree-chip-spot-pill">{tree.currentSpotId}</small>
+    </button>
+  )
+}
+
 function App() {
   const [data, setData] = useState<NormalizedOrchardData | null>(initialData)
   const [selectedTreeId, setSelectedTreeId] = useState<string | null>(getInitialSelectedTreeId(initialData))
@@ -85,6 +166,7 @@ function App() {
   const [layoutImportMessage, setLayoutImportMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(
     null,
   )
+  const [workspaceTab, setWorkspaceTab] = useState<'layout' | 'fulfillment'>('layout')
   const [detailDrawerOpen, setDetailDrawerOpen] = useState(false)
   const [advancedActionsOpen, setAdvancedActionsOpen] = useState(false)
   const isNarrowViewport = useNarrowViewport()
@@ -228,7 +310,7 @@ function App() {
       const text = await file.text()
       const snapshot = parseLayoutJson(text)
       const base = structuredClone(data) as NormalizedOrchardData
-      const applied = applyLayoutSnapshot(base, snapshot)
+      const applied = applyFulfillmentOverrides(applyLayoutSnapshot(base, snapshot))
       setData(applied)
       setSelectedTreeId(applied.trees.find((tree) => tree.currentSpotId)?.id ?? applied.trees[0]?.id ?? null)
       setLayoutImportMessage({ type: 'success', text: 'Layout imported successfully.' })
@@ -286,6 +368,14 @@ function App() {
     }
     return m
   }, [data, spotById, treeById])
+
+  function spotLabelForTree(spotId: string | null): string {
+    if (!spotId) {
+      return '—'
+    }
+    const spot = spotById.get(spotId)
+    return spot ? `Row ${spot.rowNumber}, spot ${spot.id}` : spotId
+  }
 
   return (
     <div className="app-shell">
@@ -368,15 +458,51 @@ function App() {
 
       <main className="layout-grid">
         <section className="workspace">
-          <article className="card orchard-panel">
-            <div className="panel-header">
-              <div>
-                <h2>Orchard layout</h2>
-                <p>Drag to rearrange.</p>
-              </div>
+          <div className="workspace-tabs card workspace-tabs-card">
+            <div className="workspace-tablist" role="tablist" aria-label="Workspace">
+              <button
+                type="button"
+                role="tab"
+                id="workspace-tab-layout"
+                aria-selected={workspaceTab === 'layout'}
+                aria-controls="workspace-panel-layout"
+                tabIndex={workspaceTab === 'layout' ? 0 : -1}
+                className={`workspace-tab${workspaceTab === 'layout' ? ' workspace-tab--active' : ''}`}
+                onClick={() => setWorkspaceTab('layout')}
+              >
+                Orchard layout
+              </button>
+              <button
+                type="button"
+                role="tab"
+                id="workspace-tab-fulfillment"
+                aria-selected={workspaceTab === 'fulfillment'}
+                aria-controls="workspace-panel-fulfillment"
+                tabIndex={workspaceTab === 'fulfillment' ? 0 : -1}
+                className={`workspace-tab${workspaceTab === 'fulfillment' ? ' workspace-tab--active' : ''}`}
+                onClick={() => setWorkspaceTab('fulfillment')}
+              >
+                Shipment & fulfillment
+              </button>
             </div>
+          </div>
 
-            <div className="orchard-map-scroll">
+          <div
+            role="tabpanel"
+            id="workspace-panel-layout"
+            aria-labelledby="workspace-tab-layout"
+            hidden={workspaceTab !== 'layout'}
+            className="workspace-tabpanel"
+          >
+            <article className="card orchard-panel">
+              <div className="panel-header">
+                <div>
+                  <h2>Orchard layout</h2>
+                  <p>Drag to rearrange.</p>
+                </div>
+              </div>
+
+              <div className="orchard-map-scroll">
               <div
                 className="orchard-map"
                 style={
@@ -454,60 +580,26 @@ function App() {
                                   const tree = spot.currentTreeId ? treeById.get(spot.currentTreeId) : undefined
                                   const isSelected = tree?.id === selectedTreeId
                                   const spacingUnknown = Boolean(tree && crownDiameterFtForSpacing(tree) == null)
+                                  const rootstockMissing = Boolean(tree && isRootstockCodeMissing(tree))
                                   const pairAfter = rowSpacing?.pairs.find((p) => p.fromSpotId === spot.id)
                                   const rowStart = feetFromRowStartBySpotId.get(spot.id)
-                                  const delivery = tree ? resolveDeliveryStatus(tree) : 'on-site'
-                                  const deliveryLine = tree
-                                    ? deliveryStatusChipLine(tree.sourceRecordId, delivery)
-                                    : null
 
                                   return (
                                     <Fragment key={spot.id}>
                                       <div
-                                        className={`spot ${spot.kind} spot-zone-${spot.zoneId.replace(/[^a-z0-9-]+/gi, '-')} ${isSelected ? 'spot-selected' : ''} ${spacingUnknown ? 'spot--spacing-unknown' : ''}`}
+                                        className={`spot ${spot.kind} spot-zone-${spot.zoneId.replace(/[^a-z0-9-]+/gi, '-')} ${isSelected ? 'spot-selected' : ''} ${spacingUnknown ? 'spot--spacing-unknown' : ''} ${rootstockMissing ? 'spot--rootstock-missing' : ''}`}
                                         onDragOver={(event) => event.preventDefault()}
                                         onDrop={() => handleDropToSpot(spot.id)}
                                       >
                                         {tree ? (
-                                          <button
-                                            className={`tree-chip orchard-cat-${getOrchardDisplayCategory(tree)} species-${tree.species.toLowerCase().replace(/[^a-z0-9]+/g, '-')} ${tree.manualOverride.isManualOverride ? 'manual' : ''} ${spacingUnknown ? 'tree-chip--spacing-unknown' : ''} ${delivery === 'in-transit' ? 'tree-chip--in-transit' : ''}`}
-                                            draggable
-                                            onClick={() => selectTreeForPlanner(tree.id)}
-                                            onDragStart={() => setDraggedTreeId(tree.id)}
+                                          <OrchardTreeChip
+                                            tree={tree}
+                                            spacingUnknown={spacingUnknown}
+                                            rowStart={rowStart}
+                                            onSelectTree={(id) => selectTreeForPlanner(id)}
+                                            onDragStart={setDraggedTreeId}
                                             onDragEnd={() => setDraggedTreeId(null)}
-                                            type="button"
-                                            title={
-                                              [
-                                                spacingUnknown ? 'Crown spread unknown — add mature width or height' : null,
-                                                delivery === 'in-transit'
-                                                  ? deliveryStatusLabel('in-transit', tree.sourceRecordId)
-                                                  : null,
-                                              ]
-                                                .filter(Boolean)
-                                                .join(' · ') || undefined
-                                            }
-                                          >
-                                            <span>{tree.varietyName}</span>
-                                            {deliveryLine ? (
-                                              <small className="tree-chip-delivery-pill">{deliveryLine}</small>
-                                            ) : null}
-                                            <small>{getTreeSpeciesLabel(tree)}</small>
-                                            <small className="tree-chip-size">{formatMatureSizeWithHeight(tree)}</small>
-                                            {rowStart && (rowStart.feetFromRowStart > 0 || rowStart.partial) ? (
-                                              <small
-                                                className="tree-chip-row-start"
-                                                title={
-                                                  rowStart.partial
-                                                    ? 'Feet along row from the first spot; omits gaps with unknown crown spread'
-                                                    : 'Feet along row from the first spot'
-                                                }
-                                              >
-                                                {rowStart.feetFromRowStart}′ from row start
-                                                {rowStart.partial ? '\u202f*' : ''}
-                                              </small>
-                                            ) : null}
-                                            <small className="tree-chip-spot-pill">{tree.currentSpotId}</small>
-                                          </button>
+                                          />
                                         ) : null}
                                       </div>
                                       {pairAfter ? (
@@ -554,6 +646,18 @@ function App() {
               </div>
             </div>
           </article>
+          </div>
+
+          <div
+            role="tabpanel"
+            id="workspace-panel-fulfillment"
+            aria-labelledby="workspace-tab-fulfillment"
+            hidden={workspaceTab !== 'fulfillment'}
+            className="workspace-tabpanel"
+          >
+            {data ? <FulfillmentSummaryPanel trees={data.trees} embedded /> : null}
+          </div>
+
         </section>
 
         {isNarrowViewport && detailDrawerOpen ? (
@@ -581,7 +685,7 @@ function App() {
               ×
             </button>
           </div>
-          <VarietyDetailPanel record={detailRecord} tree={detailTree} />
+          <VarietyDetailPanel record={detailRecord} tree={detailTree} getSpotLabel={spotLabelForTree} />
         </aside>
       </main>
     </div>

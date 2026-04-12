@@ -61,6 +61,7 @@ const HEADER_ALIASES: Record<string, string[]> = {
   matureSizeText: ['mature size', 'size notes', 'vigor', 'tree size'],
   shippingPlantSize: ['shipping', 'shipping plant size', 'plant size', 'shipping size'],
   rootstock: ['rootstock'],
+  rootstockCode: ['rootstock code', 'rootstock_code', 'rootstockcode'],
   sizeClass: ['size class'],
   coldHardiness: ['cold hardiness', 'hardiness', 'cold hardiness f'],
   ripeningWindow: [
@@ -85,8 +86,19 @@ const HEADER_ALIASES: Record<string, string[]> = {
   orchardNotes: ['notes', 'orchard notes', 'comments'],
 }
 
+const ARCHIVED_FROM_PLANNER_VARIETIES = new Set(['prairie dawn'])
+const PLANTED_PERSIMMON_VARIETIES = new Set(['meader', 'prairie star'])
+
 function normalizeHeader(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+}
+
+function normalizeVarietyKey(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/®/g, '')
+    .replace(/\s+/g, ' ')
 }
 
 function getCellString(value: unknown) {
@@ -343,12 +355,16 @@ function parseSpreadsheetRows(rows: Record<string, unknown>[]) {
       otherDiseaseNotes,
       diseaseNotes: legacyDiseaseColumn,
     })
+    const varietyKey = normalizeVarietyKey(varietyName)
+    const archivedFromPlanner = ARCHIVED_FROM_PLANNER_VARIETIES.has(varietyKey)
+    const plantedPersimmon = species === 'Persimmon' && PLANTED_PERSIMMON_VARIETIES.has(varietyKey)
+    const placeholderOnly = species === 'Persimmon' && !plantedPersimmon
 
     const record = {
       id: `${slugify(varietyName)}-${index + 1}`,
       varietyName,
       species,
-      orchardSection,
+      orchardSection: species === 'Persimmon' && plantedPersimmon ? 'Persimmons' : orchardSection,
       orchardSectionSpreadsheet,
       supplierGroup,
       supplier,
@@ -357,12 +373,13 @@ function parseSpreadsheetRows(rows: Record<string, unknown>[]) {
       isStandard,
       costPerTreeUsd,
       totalUsd,
-      quantity,
+      quantity: archivedFromPlanner ? 0 : quantity,
       matureHeightFt,
       matureWidthFt: toWidthEstimate(matureHeightFt),
       matureSizeText: getCellString(findHeaderValue(row, 'matureSizeText')) || undefined,
       shippingPlantSize,
       rootstock: getCellString(findHeaderValue(row, 'rootstock')) || undefined,
+      rootstockCode: getCellString(findHeaderValue(row, 'rootstockCode')) || undefined,
       sizeClass: toSizeClass(findHeaderValue(row, 'sizeClass'), matureHeightFt),
       coldHardiness:
         getCellString(findHeaderValue(row, 'coldHardiness')) ||
@@ -383,12 +400,12 @@ function parseSpreadsheetRows(rows: Record<string, unknown>[]) {
       bloomGroupTiming,
       storagePotential,
       orchardNotes: orchardNotesCell || undefined,
-      activePlantingInventory: species !== 'Persimmon' && quantity > 0,
-      placeholderOnly: species === 'Persimmon',
+      activePlantingInventory: !placeholderOnly && quantity > 0 && !archivedFromPlanner,
+      placeholderOnly,
       sourceRefs: ['Tendolle Orchard Varieties .xlsx'],
     } satisfies TreeSeedRecord
 
-    if (quantity > 0) {
+    if (!archivedFromPlanner && quantity > 0) {
       inventoryRecords.push(record)
     } else {
       inactiveInventoryRecords.push(record)
